@@ -1,0 +1,26 @@
+import { supabase } from '../config/supabaseConfig.js';
+
+export const insertPrediction = async (data) => {
+  const { error } = await supabase.from('predictions').insert({
+    company: data.company,
+    advice: data.advice,
+    bullish_percentage: data.bullish,
+    bearish_percentage: data.bearish,
+    confidence: data.confidence
+  });
+
+  if (error) throw error;
+};
+
+export const getLatestPrediction = async (company) => {
+  const { data, error } = await supabase
+    .from('predictions')
+    .select('*')
+    .eq('company', company)
+    .order('timestamp', { ascending: false })
+    .limit(1)
+    .single();
+
+  if (error) throw error;
+  return data;
+};
