@@ -3,12 +3,13 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import predictionRoutes from './routes/predictionRoutes.js';
 import authRoutes from './routes/authRoutes.js';
+import './cron/dailyJob.js';
 
 dotenv.config();
 
 const app = express();
 app.use(cors({
-  origin: ['https://your-vercel-app.vercel.app', 'http://localhost:5173'],
+  origin: ['https://tradepredict-five.vercel.app', 'http://localhost:5173'],
   credentials: true
 }));
 app.use(express.json());

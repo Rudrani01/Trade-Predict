@@ -18,17 +18,68 @@ import {
   ResponsiveContainer
 } from 'recharts';
 
+const BACKEND_URL = 'https://trade-predict.onrender.com';
+
+const COMPANY_NAME_MAP = {
+  'Adani Ports': 'Adani Ports & SEZ',
+  'HCL Tech': 'HCLTech',
+  'Reliance': 'Reliance Industries',
+  'SBI': 'State Bank of India',
+  'SBI Life': 'SBI Life Insurance Company',
+  'Nestle': 'Nestlé India',
+  'Tata Consumer': 'Tata Consumer Products',
+  'Kotak Bank': 'Kotak Mahindra Bank',
+  'Grasim': 'Grasim Industries',
+  'Hindalco': 'Hindalco Industries',
+  'ONGC': 'Oil and Natural Gas Corporation',
+  'Titan': 'Titan Company',
+  'TCS': 'Tata Consultancy Services',
+  'Adani Enterprises': 'Adani Enterprises',
+  'Apollo Hospitals': 'Apollo Hospitals',
+  'Asian Paints': 'Asian Paints',
+  'Axis Bank': 'Axis Bank',
+  'Bajaj Auto': 'Bajaj Auto',
+  'Bajaj Finance': 'Bajaj Finance',
+  'Bajaj Finserv': 'Bajaj Finserv',
+  'Bharti Airtel': 'Bharti Airtel',
+  'Cipla': 'Cipla',
+  'Coal India': 'Coal India',
+  "Dr. Reddy's Laboratories": "Dr. Reddy's Laboratories",
+  'Eicher Motors': 'Eicher Motors',
+  'HDFC Bank': 'HDFC Bank',
+  'HDFC Life': 'HDFC Life',
+  'Hero MotoCorp': 'Hero MotoCorp',
+  'Hindustan Unilever': 'Hindustan Unilever',
+  'ICICI Bank': 'ICICI Bank',
+  'IndusInd Bank': 'IndusInd Bank',
+  'Infosys': 'Infosys',
+  'ITC': 'ITC',
+  'JSW Steel': 'JSW Steel',
+  'Larsen & Toubro': 'Larsen & Toubro',
+  'Mahindra & Mahindra': 'Mahindra & Mahindra',
+  'Maruti Suzuki': 'Maruti Suzuki',
+  'NTPC': 'NTPC',
+  'Power Grid': 'Power Grid',
+  'Sun Pharma': 'Sun Pharma',
+  'Tata Motors': 'Tata Motors',
+  'Tata Steel': 'Tata Steel',
+  'Tech Mahindra': 'Tech Mahindra',
+  'UltraTech Cement': 'UltraTech Cement',
+  'Wipro': 'Wipro',
+};
+
 const Dashboard = () => {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [userData, setUserData] = useState(null);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [predicting, setPredicting] = useState(false);
 
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [logoutPending, setLogoutPending] = useState(false);
 
-  const [selectedCompany, setSelectedCompany] = useState('All');
+  const [selectedCompany, setSelectedCompany] = useState('Infosys');
   const [selectedAdvice, setSelectedAdvice] = useState({
     buy: false,
     sell: false,
@@ -43,7 +94,6 @@ const Dashboard = () => {
     ultraTech: false
   });
 
-  // ML prediction states
   const [adviceData, setAdviceData] = useState([
     { name: 'BUY', value: 0, color: '#5DA5DA' },
     { name: 'STRONG BUY', value: 0, color: '#0F4C81' },
@@ -56,20 +106,20 @@ const Dashboard = () => {
   ]);
   const [bullish, setBullish] = useState(null);
   const [bearish, setBearish] = useState(null);
-  const [confidence, setConfidence] = useState(null);
+  const [advice, setAdvice] = useState(null);
 
   const nifty50Companies = [
-    'All', 'Adani Enterprises', 'Adani Ports', 'Apollo Hospitals',
+    'Adani Enterprises', 'Adani Ports', 'Apollo Hospitals',
     'Asian Paints', 'Axis Bank', 'Bajaj Auto', 'Bajaj Finance',
-    'Bajaj Finserv', 'Bharti Airtel', 'BPCL', 'Britannia', 'Cipla',
-    'Coal India', 'Divis Labs', 'Dr. Reddy\'s Laboratories', 'Eicher Motors',
+    'Bajaj Finserv', 'Bharti Airtel', 'Cipla',
+    'Coal India', "Dr. Reddy's Laboratories", 'Eicher Motors',
     'Grasim', 'HCL Tech', 'HDFC Bank', 'HDFC Life', 'Hero MotoCorp',
     'Hindalco', 'Hindustan Unilever', 'ICICI Bank', 'IndusInd Bank',
     'Infosys', 'ITC', 'JSW Steel', 'Kotak Bank', 'Larsen & Toubro',
     'Mahindra & Mahindra', 'Maruti Suzuki', 'Nestle', 'NTPC', 'ONGC',
-    'Power Grid', 'Reliance', 'SBI', 'SBI Life', 'Shree Cement',
+    'Power Grid', 'Reliance', 'SBI', 'SBI Life',
     'Sun Pharma', 'Tata Consumer', 'Tata Motors', 'Tata Steel', 'TCS',
-    'Tech Mahindra', 'Titan', 'UltraTech Cement', 'UPL', 'Wipro'
+    'Tech Mahindra', 'Titan', 'UltraTech Cement', 'Wipro'
   ];
 
   const getCurrentDate = () => {
@@ -92,7 +142,7 @@ const Dashboard = () => {
     return 'Good Night';
   };
 
-  // Auth check + fetch user profile
+  // Auth check
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (!session) {
@@ -116,30 +166,62 @@ const Dashboard = () => {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
-  // Realtime predictions listener
+  // Trigger prediction from ML model via Node backend
+  const triggerPrediction = async (company) => {
+    const mappedCompany = COMPANY_NAME_MAP[company] || company;
+    setPredicting(true);
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/predictions/trigger`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company: mappedCompany })
+      });
+      const data = await response.json();
+      if (data && !data.error) {
+        updateCharts({
+          bullish_percentage: data.bullish_percentage,
+          bearish_percentage: data.bearish_percentage,
+          advice: data.advice,
+        });
+      }
+    } catch (error) {
+      console.error('Prediction error:', error);
+    } finally {
+      setPredicting(false);
+    }
+  };
+
+  // When company changes, trigger prediction
   useEffect(() => {
-    // Fetch latest prediction on load
+    if (selectedCompany) {
+      triggerPrediction(selectedCompany);
+    }
+  }, [selectedCompany]);
+
+  // Realtime Supabase listener
+  useEffect(() => {
+    const mappedCompany = COMPANY_NAME_MAP[selectedCompany] || selectedCompany;
+
+    // Fetch latest saved prediction first
     const fetchLatest = async () => {
       const { data } = await supabase
         .from('predictions')
         .select('*')
-        .eq('company', selectedCompany)
+        .eq('company', mappedCompany)
         .order('timestamp', { ascending: false })
         .limit(1)
         .single();
-
       if (data) updateCharts(data);
     };
-
     fetchLatest();
 
-    // Subscribe to realtime updates
+    // Subscribe to realtime inserts
     const channel = supabase
       .channel('predictions-channel')
       .on('postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'predictions' },
         (payload) => {
-          if (payload.new.company === selectedCompany || selectedCompany === 'All') {
+          if (payload.new.company === mappedCompany) {
             updateCharts(payload.new);
           }
         }
@@ -152,7 +234,7 @@ const Dashboard = () => {
   const updateCharts = (data) => {
     setBullish(data.bullish_percentage);
     setBearish(data.bearish_percentage);
-    setConfidence(data.confidence);
+    setAdvice(data.advice);
 
     setAdviceData([
       { name: 'BUY', value: data.bullish_percentage, color: '#5DA5DA' },
@@ -204,12 +286,21 @@ const Dashboard = () => {
     if (logoutPending) completeLogout();
   };
 
-  const handleAdviceChange = (advice) => {
-    setSelectedAdvice(prev => ({ ...prev, [advice]: !prev[advice] }));
+  const handleAdviceChange = (a) => {
+    setSelectedAdvice(prev => ({ ...prev, [a]: !prev[a] }));
   };
 
   const handleTopCompanyChange = (company) => {
     setSelectedTopCompanies(prev => ({ ...prev, [company]: !prev[company] }));
+  };
+
+  const getAdviceColor = (adv) => {
+    if (!adv) return 'text-gray-800';
+    if (adv === 'STRONG BUY') return 'text-green-700';
+    if (adv === 'BUY') return 'text-green-500';
+    if (adv === 'STRONG SELL') return 'text-red-700';
+    if (adv === 'SELL') return 'text-red-500';
+    return 'text-yellow-500';
   };
 
   if (loading) {
@@ -291,6 +382,13 @@ const Dashboard = () => {
               ))}
             </select>
           </div>
+
+          {/* Prediction status */}
+          {predicting && (
+            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-3 border border-white/20 text-center">
+              <p className="text-sm text-white animate-pulse">⏳ Fetching prediction...</p>
+            </div>
+          )}
 
           <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4 border border-white/20">
             <p className="text-sm font-bold text-white">{day}</p>
@@ -383,15 +481,15 @@ const Dashboard = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
               className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
-              <p className="text-sm text-gray-500 mb-2">Ranking</p>
-              <p className="text-3xl font-bold text-gray-800">1225</p>
+              <p className="text-sm text-gray-500 mb-2">Selected Company</p>
+              <p className="text-xl font-bold text-gray-800">{selectedCompany}</p>
             </motion.div>
 
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
               className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
               <p className="text-sm text-gray-500 mb-2">Bullish Percentage</p>
               <p className="text-3xl font-bold text-green-600">
-                {bullish !== null ? bullish.toFixed(2) : '—'}
+                {predicting ? '...' : bullish !== null ? `${bullish.toFixed(2)}%` : '—'}
               </p>
             </motion.div>
 
@@ -399,15 +497,15 @@ const Dashboard = () => {
               className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
               <p className="text-sm text-gray-500 mb-2">Bearish Percentage</p>
               <p className="text-3xl font-bold text-red-600">
-                {bearish !== null ? bearish.toFixed(2) : '—'}
+                {predicting ? '...' : bearish !== null ? `${bearish.toFixed(2)}%` : '—'}
               </p>
             </motion.div>
 
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}
               className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
-              <p className="text-sm text-gray-500 mb-2">Confidence Level</p>
-              <p className="text-3xl font-bold text-gray-800">
-                {confidence || '—'}
+              <p className="text-sm text-gray-500 mb-2">Advice</p>
+              <p className={`text-2xl font-bold ${getAdviceColor(advice)}`}>
+                {predicting ? '...' : advice || '—'}
               </p>
             </motion.div>
           </div>
@@ -416,7 +514,7 @@ const Dashboard = () => {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}
               className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-700 mb-4">Advice</h3>
+              <h3 className="text-lg font-semibold text-gray-700 mb-4">Advice Breakdown</h3>
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={adviceData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />

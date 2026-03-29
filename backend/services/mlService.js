@@ -14,8 +14,8 @@ export const fetchAndStorePrediction = async (company) => {
     advice: data.advice,
     bullish: data.bullish_percentage,
     bearish: data.bearish_percentage,
-    confidence: data.confidence
-  });
+    confidence: data.advice  // or just remove confidence entirely
+});
 
   return data;
 };

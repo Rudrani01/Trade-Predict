@@ -59,12 +59,12 @@ export default assets
 // ===================================================
 export const teamData = [
   {
-    name: 'Amey',
+    name: 'Amey Samarth',
     title: 'Founder & Analyst',
     image: amey_img,
   },
   {
-    name: 'Rudrani',
+    name: 'Rudrani Dhomne',
     title: 'Co-Founder & Developer',
     image: rudrani_img,
   },

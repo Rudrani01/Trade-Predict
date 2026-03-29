@@ -3,7 +3,7 @@ import { getPrediction, triggerPrediction } from '../controllers/predictionContr
 
 const router = express.Router();
 
-router.get('/:company', getPrediction);
 router.post('/trigger', triggerPrediction);
+router.get('/:company', getPrediction);
 
 export default router;
