@@ -18,7 +18,7 @@ import {
   ResponsiveContainer
 } from 'recharts';
 
-const BACKEND_URL = 'https://trade-predict.onrender.com';
+const BACKEND_URL = 'https:/trade-predict.onrender.com';
 
 const COMPANY_NAME_MAP = {
   'Adani Ports': 'Adani Ports & SEZ',
