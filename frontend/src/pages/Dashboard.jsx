@@ -291,8 +291,15 @@ const Dashboard = () => {
     setSelectedAdvice(prev => ({ ...prev, [a]: !prev[a] }));
   };
 
-  const handleTopCompanyChange = (company) => {
-    setSelectedTopCompanies(prev => ({ ...prev, [company]: !prev[company] }));
+  const handleTopCompanyChange = (key) => {
+    const keyToCompany = {
+      axisBank: 'Axis Bank',
+      drReddy: "Dr. Reddy's Laboratories",
+      iciciBank: 'ICICI Bank',
+      tataConsumer: 'Tata Consumer',
+      ultraTech: 'UltraTech Cement'
+    };
+    setSelectedCompany(keyToCompany[key]);
   };
 
   const getAdviceColor = (adv) => {
