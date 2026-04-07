@@ -4,8 +4,8 @@ export const insertPrediction = async (data) => {
   const { error } = await supabase.from('predictions').insert({
     company: data.company,
     advice: data.advice,
-    bullish_percentage: data.bullish,
-    bearish_percentage: data.bearish,
+    bullish_percentage: data.bullish_percentage,  // ✅ consistent naming
+    bearish_percentage: data.bearish_percentage,  // ✅ consistent naming
     confidence: data.confidence
   });
 
