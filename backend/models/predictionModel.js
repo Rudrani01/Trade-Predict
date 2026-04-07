@@ -19,7 +19,7 @@ export const getLatestPrediction = async (company) => {
     .eq('company', company)
     .order('timestamp', { ascending: false })
     .limit(1)
-    .single();
+    .maybeSingle();
 
   if (error) throw error;
   return data;
