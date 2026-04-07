@@ -9,15 +9,15 @@ dotenv.config();
 
 const app = express();
 
-// ✅ Fixed CORS - added methods + OPTIONS preflight
-app.use(cors({
+const corsOptions = {
   origin: ['https://tradepredict-five.vercel.app', 'http://localhost:5173'],
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
-}));
+};
 
-app.options('*', cors()); // ✅ handle preflight before routes
+app.use(cors(corsOptions));
+app.options('/{*path}', cors(corsOptions)); // ✅ fixed wildcard for Express 5
 
 app.use(express.json());
 
@@ -26,4 +26,5 @@ app.use('/api/auth', authRoutes);
 
 app.get('/', (req, res) => res.send('Backend running'));
 
-app.listen(5000, () => console.log('Server running on port 5000'));
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

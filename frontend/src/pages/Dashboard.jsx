@@ -211,7 +211,7 @@ const Dashboard = () => {
         .eq('company', mappedCompany)
         .order('timestamp', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
       if (data) updateCharts(data);
     };
     fetchLatest();
