@@ -6,5 +6,5 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 export const API_URL = import.meta.env.PROD
-  ? 'https://trade-predict.onrender.com/'
+  ? 'https://trade-predict.onrender.com'
   : 'http://localhost:5000';
