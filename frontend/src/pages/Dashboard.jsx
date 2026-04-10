@@ -173,7 +173,7 @@ const Dashboard = () => {
 
   // Keep backend alive — ping every 14 min so Render never sleeps
   useEffect(() => {
-    const ping = () => fetch(`${BACKEND_URL}/health`).catch(() => {});
+    const ping = () => fetch(`${API_URL}/health`).catch(() => {});
     ping();
     const interval = setInterval(ping, 14 * 60 * 1000);
     return () => clearInterval(interval);
@@ -184,7 +184,7 @@ const Dashboard = () => {
     const initDashboard = async () => {
       try {
         // Step 1: Load everything already in Supabase (fast, single query)
-        const res = await fetch(`${BACKEND_URL}/api/predictions/all`);
+        const res = await fetch(`${API_URL}/api/predictions/all`);
         const cached = await res.json();
 
         if (Array.isArray(cached) && cached.length > 0) {
@@ -207,7 +207,7 @@ const Dashboard = () => {
 
       // Step 2: Trigger background ML refresh for all companies (fire and forget)
       const allMapped = nifty50Companies.map(c => COMPANY_NAME_MAP[c] || c);
-      fetch(`${BACKEND_URL}/api/predictions/trigger-all`, {
+      fetch(`${API_URL}/api/predictions/trigger`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ companies: allMapped })
@@ -229,7 +229,7 @@ const Dashboard = () => {
     } else if (!initializing) {
       // Not in cache yet — fetch individually
       setPredicting(true);
-      fetch(`${BACKEND_URL}/api/predictions/trigger`, {
+      fetch(`${API_URL}/api/predictions/trigger-all`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ company: mapped })
