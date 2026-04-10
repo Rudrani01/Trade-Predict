@@ -25,11 +25,6 @@ const companies = [
   'UltraTech Cement', 'Wipro'
 ];
 
-// ✅ Keep Render alive — ping every 10 mins
-cron.schedule('*/10 * * * *', () => {
-  fetch(`${process.env.BACKEND_URL}/health`).catch(() => {});
-});
-
 // ✅ Keep Supabase alive — lightweight query every 4 days
 cron.schedule('0 0 */4 * *', async () => {
   try {
