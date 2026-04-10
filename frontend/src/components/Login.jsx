@@ -155,6 +155,7 @@ const Login = () => {
         )}
 
         {/* Register Form */}
+        {/* Register Form */}
         {!isLogin && (
           <form onSubmit={handleRegisterSubmit} className="space-y-5">
             <input type="text" name="username" placeholder="Username"
@@ -163,12 +164,6 @@ const Login = () => {
               value={registerData.email} onChange={handleRegisterChange} required disabled={loading} className={inputClass} />
             <input type="password" name="password" placeholder="Enter Password (min 6 characters)"
               value={registerData.password} onChange={handleRegisterChange} required disabled={loading} minLength={6} className={inputClass} />
-            <div className="flex items-center space-x-2 pt-2">
-              <input type="checkbox" id="terms" name="terms"
-                checked={registerData.terms} onChange={handleRegisterChange}
-                disabled={loading} className="w-4 h-4 accent-[#5044E5] cursor-pointer" />
-              <label htmlFor="terms" className="text-sm text-gray-500 dark:text-white/75 cursor-pointer">I agree to the terms and conditions</label>
-            </div>
             <button type="submit" disabled={loading}
               className="w-full bg-gradient-to-r from-[#5044E5] to-[#4d8cea] text-white py-3 rounded-full font-semibold hover:shadow-lg transform hover:scale-[1.02] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed">
               {loading ? 'Creating Account...' : 'Register'}

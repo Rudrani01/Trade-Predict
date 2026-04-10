@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion } from 'motion/react';
 import { supabase, API_URL } from '../supabase/config';
 import { useNavigate } from 'react-router-dom';
@@ -8,8 +8,6 @@ import {
   BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
-
-
 
 const COMPANY_NAME_MAP = {
   'Adani Ports': 'Adani Ports & SEZ',
@@ -73,6 +71,36 @@ const nifty50Companies = [
   'Tech Mahindra', 'Titan', 'UltraTech Cement', 'Wipro'
 ];
 
+// Map checkbox keys to actual advice strings from ML model
+const ADVICE_KEY_MAP = {
+  buy: 'BUY',
+  sell: 'SELL',
+  strongBuy: 'STRONG BUY',
+  strongSell: 'STRONG SELL'
+};
+
+// Custom XAxis tick to wrap long labels like "STRONG BUY"
+const CustomXAxisTick = ({ x, y, payload }) => {
+  const words = payload.value.split(' ');
+  return (
+    <g transform={`translate(${x},${y})`}>
+      {words.map((word, i) => (
+        <text
+          key={i}
+          x={0}
+          y={0}
+          dy={16 + i * 14}
+          textAnchor="middle"
+          fill="#6B7280"
+          fontSize={12}
+        >
+          {word}
+        </text>
+      ))}
+    </g>
+  );
+};
+
 const Dashboard = () => {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
@@ -80,7 +108,7 @@ const Dashboard = () => {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [loading, setLoading] = useState(true);
   const [predicting, setPredicting] = useState(false);
-  const [initializing, setInitializing] = useState(true); // bulk load state
+  const [initializing, setInitializing] = useState(true);
 
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [logoutPending, setLogoutPending] = useState(false);
@@ -94,7 +122,6 @@ const Dashboard = () => {
     tataConsumer: false, ultraTech: false
   });
 
-  // In-memory cache: { [mappedCompanyName]: predictionObject }
   const [allPredictions, setAllPredictions] = useState({});
 
   const [adviceData, setAdviceData] = useState([
@@ -136,16 +163,32 @@ const Dashboard = () => {
     setBearish(data.bearish_percentage);
     setAdvice(data.advice);
     setAdviceData([
-      { name: 'BUY',        value: data.bullish_percentage,       color: '#5DA5DA' },
+      { name: 'BUY', value: data.bullish_percentage, color: '#5DA5DA' },
       { name: 'STRONG BUY', value: data.bullish_percentage * 0.7, color: '#0F4C81' },
-      { name: 'STRONG SELL',value: data.bearish_percentage * 0.7, color: '#8B0000' },
-      { name: 'SELL',       value: data.bearish_percentage,       color: '#DC143C' }
+      { name: 'STRONG SELL', value: data.bearish_percentage * 0.7, color: '#8B0000' },
+      { name: 'SELL', value: data.bearish_percentage, color: '#DC143C' }
     ]);
     setConfidenceData([
-      { name: 'STRONG BUY',  value: data.bullish_percentage, color: '#1E5BA8' },
+      { name: 'STRONG BUY', value: data.bullish_percentage, color: '#1E5BA8' },
       { name: 'STRONG SELL', value: data.bearish_percentage, color: '#C41E3A' }
     ]);
   }, []);
+
+  // ✅ Filtered company list based on checked advice boxes
+  const filteredCompanies = useMemo(() => {
+    const anyChecked = Object.values(selectedAdvice).some(Boolean);
+    if (!anyChecked) return nifty50Companies; // no filter — show all
+
+    const activeAdviceTypes = Object.entries(selectedAdvice)
+      .filter(([, checked]) => checked)
+      .map(([key]) => ADVICE_KEY_MAP[key]);
+
+    return nifty50Companies.filter(company => {
+      const mapped = COMPANY_NAME_MAP[company] || company;
+      const prediction = allPredictions[mapped];
+      return prediction && activeAdviceTypes.includes(prediction.advice);
+    });
+  }, [selectedAdvice, allPredictions]);
 
   // Auth check
   useEffect(() => {
@@ -171,19 +214,19 @@ const Dashboard = () => {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
-  // Keep backend alive — ping every 14 min so Render never sleeps
+  // Keep backend alive
   useEffect(() => {
-    const ping = () => fetch(`${API_URL}/health`).catch(() => {});
+    const ping = () => fetch(`${API_URL}/health`).catch(() => { });
     ping();
     const interval = setInterval(ping, 14 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
 
-  // On mount: load all cached predictions from DB, then trigger background refresh
+  // On mount: load all cached predictions, trigger background refresh
   useEffect(() => {
     const initDashboard = async () => {
       try {
-        // Step 1: Load everything already in Supabase (fast, single query)
+        // ✅ Fixed: correct endpoint /all
         const res = await fetch(`${API_URL}/api/predictions/all`);
         const cached = await res.json();
 
@@ -192,7 +235,6 @@ const Dashboard = () => {
           cached.forEach(p => { map[p.company] = p; });
           setAllPredictions(map);
 
-          // Show current company immediately from cache
           const mapped = COMPANY_NAME_MAP[selectedCompany] || selectedCompany;
           if (map[mapped]) {
             updateCharts(map[mapped]);
@@ -205,31 +247,30 @@ const Dashboard = () => {
         setInitializing(false);
       }
 
-      // Step 2: Trigger background ML refresh for all companies (fire and forget)
+      // ✅ Fixed: correct endpoint /trigger-all with companies array
       const allMapped = nifty50Companies.map(c => COMPANY_NAME_MAP[c] || c);
-      fetch(`${API_URL}/api/predictions/trigger`, {
+      fetch(`${API_URL}/api/predictions/trigger-all`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ companies: allMapped })
-      }).catch(() => {});
+      }).catch(() => { });
     };
 
     initDashboard();
-  }, []); // runs once on mount
+  }, []);
 
-  // When company changes — read from memory (instant), fallback to API if missing
+  // Company switch — instant from memory, fallback if missing
   useEffect(() => {
     if (!selectedCompany) return;
     const mapped = COMPANY_NAME_MAP[selectedCompany] || selectedCompany;
 
     if (allPredictions[mapped]) {
-      // Instant — already loaded
       updateCharts(allPredictions[mapped]);
       setPredicting(false);
     } else if (!initializing) {
-      // Not in cache yet — fetch individually
       setPredicting(true);
-      fetch(`${API_URL}/api/predictions/trigger-all`, {
+      // ✅ Fixed: correct endpoint /trigger with single company
+      fetch(`${API_URL}/api/predictions/trigger`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ company: mapped })
@@ -246,7 +287,7 @@ const Dashboard = () => {
     }
   }, [selectedCompany, allPredictions, initializing, updateCharts]);
 
-  // Realtime: update in-memory cache when new predictions arrive
+  // Realtime updates
   useEffect(() => {
     const channel = supabase
       .channel('predictions-realtime')
@@ -254,13 +295,9 @@ const Dashboard = () => {
         { event: 'INSERT', schema: 'public', table: 'predictions' },
         (payload) => {
           const incoming = payload.new;
-          // Update memory cache
           setAllPredictions(prev => ({ ...prev, [incoming.company]: incoming }));
-          // Update charts if it's the currently viewed company
           const mapped = COMPANY_NAME_MAP[selectedCompany] || selectedCompany;
-          if (incoming.company === mapped) {
-            updateCharts(incoming);
-          }
+          if (incoming.company === mapped) updateCharts(incoming);
         }
       )
       .subscribe();
@@ -305,8 +342,34 @@ const Dashboard = () => {
     if (logoutPending) completeLogout();
   };
 
-  const handleAdviceChange = (a) => {
-    setSelectedAdvice(prev => ({ ...prev, [a]: !prev[a] }));
+  // ✅ When advice filter changes, if selected company is no longer in filtered list, reset to first match
+  const handleAdviceChange = (key) => {
+    setSelectedAdvice(prev => {
+      const updated = { ...prev, [key]: !prev[key] };
+
+      const anyChecked = Object.values(updated).some(Boolean);
+      if (anyChecked) {
+        const activeAdviceTypes = Object.entries(updated)
+          .filter(([, checked]) => checked)
+          .map(([k]) => ADVICE_KEY_MAP[k]);
+
+        const mapped = COMPANY_NAME_MAP[selectedCompany] || selectedCompany;
+        const currentPrediction = allPredictions[mapped];
+        const currentStillValid = currentPrediction && activeAdviceTypes.includes(currentPrediction.advice);
+
+        if (!currentStillValid) {
+          // Auto-select first company that matches new filter
+          const firstMatch = nifty50Companies.find(company => {
+            const m = COMPANY_NAME_MAP[company] || company;
+            const p = allPredictions[m];
+            return p && activeAdviceTypes.includes(p.advice);
+          });
+          if (firstMatch) setSelectedCompany(firstMatch);
+        }
+      }
+
+      return updated;
+    });
   };
 
   const handleTopCompanyChange = (key) => {
@@ -317,6 +380,14 @@ const Dashboard = () => {
       tataConsumer: 'Tata Consumer',
       ultraTech: 'UltraTech Cement'
     };
+
+    setSelectedTopCompanies(prev => {
+      const isCurrentlyChecked = prev[key];
+      // ✅ Uncheck all, then check only the clicked one (radio-like behavior)
+      const reset = Object.fromEntries(Object.keys(prev).map(k => [k, false]));
+      return isCurrentlyChecked ? reset : { ...reset, [key]: true };
+    });
+
     setSelectedCompany(keyToCompany[key]);
   };
 
@@ -328,6 +399,8 @@ const Dashboard = () => {
     if (adv === 'SELL') return 'text-red-500';
     return 'text-yellow-500';
   };
+
+  const anyAdviceChecked = Object.values(selectedAdvice).some(Boolean);
 
   if (loading) {
     return (
@@ -357,9 +430,7 @@ const Dashboard = () => {
                 onClick={() => setShowProfileMenu(!showProfileMenu)}
                 className="flex items-center space-x-3 focus:outline-none"
               >
-                <span className="text-sm text-gray-600">
-                  {userData?.full_name || 'User'}
-                </span>
+                <span className="text-sm text-gray-600">{userData?.full_name || 'User'}</span>
                 <div className="w-10 h-10 rounded-full bg-gradient-to-r from-[#5B8DEE] to-[#4B7FE5] flex items-center justify-center text-white font-semibold">
                   {userData?.full_name?.charAt(0).toUpperCase() || 'U'}
                 </div>
@@ -371,9 +442,7 @@ const Dashboard = () => {
                   className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-xl border border-gray-200 py-2"
                 >
                   <div className="px-4 py-3 border-b border-gray-200">
-                    <p className="text-sm font-semibold text-gray-900">
-                      {userData?.full_name || 'User'}
-                    </p>
+                    <p className="text-sm font-semibold text-gray-900">{userData?.full_name || 'User'}</p>
                     <p className="text-sm text-gray-500 truncate">{user?.email}</p>
                   </div>
                   <button
@@ -393,21 +462,39 @@ const Dashboard = () => {
         {/* Sidebar */}
         <aside className="w-80 bg-gradient-to-b from-[#5B5FED] via-[#5B5FED] to-[#4B4FDD] text-white p-6 space-y-6 min-h-[calc(100vh-64px)] overflow-y-auto shadow-xl">
           <div>
-            <label className="block text-sm font-medium text-white mb-2">Company</label>
+            <label className="block text-sm font-medium text-white mb-2">
+              Company
+              {/* ✅ Show count when filtered */}
+              {anyAdviceChecked && (
+                <span className="ml-2 text-xs bg-white/20 px-2 py-0.5 rounded-full">
+                  {filteredCompanies.length} match
+                </span>
+              )}
+            </label>
             <select
               value={selectedCompany}
               onChange={(e) => setSelectedCompany(e.target.value)}
               className="w-full px-4 py-2.5 border border-white/30 rounded-lg bg-white/10 backdrop-blur-sm text-white focus:ring-2 focus:ring-white/50 outline-none"
             >
-              {nifty50Companies.map((company) => (
-                <option key={company} value={company} className="text-gray-900 bg-white">
-                  {company}
-                </option>
-              ))}
+              {/* ✅ Show filtered companies when advice checkbox is active */}
+              {filteredCompanies.length > 0 ? (
+                filteredCompanies.map((company) => (
+                  <option key={company} value={company} className="text-gray-900 bg-white">
+                    {company}
+                  </option>
+                ))
+              ) : anyAdviceChecked ? (
+                <option disabled className="text-gray-400 bg-white">No matches found</option>
+              ) : (
+                nifty50Companies.map((company) => (
+                  <option key={company} value={company} className="text-gray-900 bg-white">
+                    {company}
+                  </option>
+                ))
+              )}
             </select>
           </div>
 
-          {/* Status indicators */}
           {initializing && (
             <div className="bg-white/10 backdrop-blur-sm rounded-lg p-3 border border-white/20 text-center">
               <p className="text-sm text-white animate-pulse">⏳ Loading all predictions...</p>
@@ -432,19 +519,32 @@ const Dashboard = () => {
               </svg>
             </button>
             <div className="mt-3 space-y-2.5 pl-2">
-              {['buy', 'sell', 'strongBuy', 'strongSell'].map((key) => (
-                <label key={key} className="flex items-center space-x-2 cursor-pointer group">
-                  <input
-                    type="checkbox"
-                    checked={selectedAdvice[key]}
-                    onChange={() => handleAdviceChange(key)}
-                    className="w-4 h-4 accent-white cursor-pointer"
-                  />
-                  <span className="text-sm text-white group-hover:text-white/80 transition-colors">
-                    {key === 'strongBuy' ? 'STRONG BUY' : key === 'strongSell' ? 'STRONG SELL' : key.toUpperCase()}
-                  </span>
-                </label>
-              ))}
+              {['buy', 'sell', 'strongBuy', 'strongSell'].map((key) => {
+                // Count how many companies have this advice
+                const adviceValue = ADVICE_KEY_MAP[key];
+                const count = Object.values(allPredictions).filter(p => p.advice === adviceValue).length;
+                return (
+                  <label key={key} className="flex items-center justify-between cursor-pointer group">
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedAdvice[key]}
+                        onChange={() => handleAdviceChange(key)}
+                        className="w-4 h-4 accent-white cursor-pointer"
+                      />
+                      <span className="text-sm text-white group-hover:text-white/80 transition-colors">
+                        {key === 'strongBuy' ? 'STRONG BUY' : key === 'strongSell' ? 'STRONG SELL' : key.toUpperCase()}
+                      </span>
+                    </div>
+                    {/* ✅ Show company count per advice type */}
+                    {count > 0 && (
+                      <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full text-white/90">
+                        {count}
+                      </span>
+                    )}
+                  </label>
+                );
+              })}
             </div>
           </div>
 
@@ -486,24 +586,7 @@ const Dashboard = () => {
             animate={{ opacity: 1, y: 0 }}
             className="bg-white rounded-xl p-6 mb-6 shadow-sm border border-gray-200"
           >
-            <div className="flex items-center justify-between">
-              <h1 className="text-3xl font-semibold text-gray-700">{getGreeting()}</h1>
-              <div className="flex items-center space-x-4">
-                <div className="text-right">
-                  <p className="text-sm text-gray-500">Portfolio Value</p>
-                  <p className="text-2xl font-bold text-gray-800">2.50K</p>
-                </div>
-                <div className="w-16 h-16">
-                  <svg viewBox="0 0 36 36">
-                    <path stroke="#E5E7EB" strokeWidth="3" fill="none"
-                      d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                    <path stroke="#5B8DEE" strokeWidth="3" strokeLinecap="round" fill="none"
-                      strokeDasharray="75, 100"
-                      d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                  </svg>
-                </div>
-              </div>
-            </div>
+            <h1 className="text-3xl font-semibold text-gray-700">{getGreeting()}</h1>
           </motion.div>
 
           {/* KPI Cards */}
@@ -544,10 +627,18 @@ const Dashboard = () => {
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}
               className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
               <h3 className="text-lg font-semibold text-gray-700 mb-4">Advice Breakdown</h3>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={adviceData}>
+              {/* ✅ Added bottom margin to give wrapped labels room */}
+              <ResponsiveContainer width="100%" height={320}>
+                <BarChart data={adviceData} margin={{ bottom: 20 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                  <XAxis dataKey="name" stroke="#9CA3AF" tick={{ fill: '#6B7280', fontSize: 12 }} />
+                  {/* ✅ Custom tick renders multi-word labels on two lines */}
+                  <XAxis
+                    dataKey="name"
+                    stroke="#9CA3AF"
+                    tick={<CustomXAxisTick />}
+                    interval={0}
+                    height={50}
+                  />
                   <YAxis stroke="#9CA3AF" tick={{ fill: '#6B7280', fontSize: 12 }} />
                   <Tooltip contentStyle={{ backgroundColor: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: '8px' }} />
                   <Bar dataKey="value" radius={[8, 8, 0, 0]}>
