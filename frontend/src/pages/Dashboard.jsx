@@ -1,24 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'motion/react';
-import { supabase } from '../supabase/config';
+import { supabase, API_URL } from '../supabase/config';
 import { useNavigate } from 'react-router-dom';
 import logo from '../assets/Tradepredict_logo.png';
 import ReviewModal from '../pages/ReviewModal';
 import {
-  BarChart,
-  Bar,
-  PieChart,
-  Pie,
-  Cell,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer
+  BarChart, Bar, PieChart, Pie, Cell,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
 
-const BACKEND_URL = 'https://trade-predict.onrender.com';
 
 
 const COMPANY_NAME_MAP = {
@@ -69,6 +59,20 @@ const COMPANY_NAME_MAP = {
   'Wipro': 'Wipro',
 };
 
+const nifty50Companies = [
+  'Adani Enterprises', 'Adani Ports', 'Apollo Hospitals',
+  'Asian Paints', 'Axis Bank', 'Bajaj Auto', 'Bajaj Finance',
+  'Bajaj Finserv', 'Bharti Airtel', 'Cipla',
+  'Coal India', "Dr. Reddy's Laboratories", 'Eicher Motors',
+  'Grasim', 'HCL Tech', 'HDFC Bank', 'HDFC Life', 'Hero MotoCorp',
+  'Hindalco', 'Hindustan Unilever', 'ICICI Bank', 'IndusInd Bank',
+  'Infosys', 'ITC', 'JSW Steel', 'Kotak Bank', 'Larsen & Toubro',
+  'Mahindra & Mahindra', 'Maruti Suzuki', 'Nestle', 'NTPC', 'ONGC',
+  'Power Grid', 'Reliance', 'SBI', 'SBI Life',
+  'Sun Pharma', 'Tata Consumer', 'Tata Motors', 'Tata Steel', 'TCS',
+  'Tech Mahindra', 'Titan', 'UltraTech Cement', 'Wipro'
+];
+
 const Dashboard = () => {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
@@ -76,24 +80,22 @@ const Dashboard = () => {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [loading, setLoading] = useState(true);
   const [predicting, setPredicting] = useState(false);
+  const [initializing, setInitializing] = useState(true); // bulk load state
 
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [logoutPending, setLogoutPending] = useState(false);
 
   const [selectedCompany, setSelectedCompany] = useState('Infosys');
   const [selectedAdvice, setSelectedAdvice] = useState({
-    buy: false,
-    sell: false,
-    strongBuy: false,
-    strongSell: false
+    buy: false, sell: false, strongBuy: false, strongSell: false
   });
   const [selectedTopCompanies, setSelectedTopCompanies] = useState({
-    axisBank: false,
-    drReddy: false,
-    iciciBank: false,
-    tataConsumer: false,
-    ultraTech: false
+    axisBank: false, drReddy: false, iciciBank: false,
+    tataConsumer: false, ultraTech: false
   });
+
+  // In-memory cache: { [mappedCompanyName]: predictionObject }
+  const [allPredictions, setAllPredictions] = useState({});
 
   const [adviceData, setAdviceData] = useState([
     { name: 'BUY', value: 0, color: '#5DA5DA' },
@@ -108,20 +110,6 @@ const Dashboard = () => {
   const [bullish, setBullish] = useState(null);
   const [bearish, setBearish] = useState(null);
   const [advice, setAdvice] = useState(null);
-
-  const nifty50Companies = [
-    'Adani Enterprises', 'Adani Ports', 'Apollo Hospitals',
-    'Asian Paints', 'Axis Bank', 'Bajaj Auto', 'Bajaj Finance',
-    'Bajaj Finserv', 'Bharti Airtel', 'Cipla',
-    'Coal India', "Dr. Reddy's Laboratories", 'Eicher Motors',
-    'Grasim', 'HCL Tech', 'HDFC Bank', 'HDFC Life', 'Hero MotoCorp',
-    'Hindalco', 'Hindustan Unilever', 'ICICI Bank', 'IndusInd Bank',
-    'Infosys', 'ITC', 'JSW Steel', 'Kotak Bank', 'Larsen & Toubro',
-    'Mahindra & Mahindra', 'Maruti Suzuki', 'Nestle', 'NTPC', 'ONGC',
-    'Power Grid', 'Reliance', 'SBI', 'SBI Life',
-    'Sun Pharma', 'Tata Consumer', 'Tata Motors', 'Tata Steel', 'TCS',
-    'Tech Mahindra', 'Titan', 'UltraTech Cement', 'Wipro'
-  ];
 
   const getCurrentDate = () => {
     const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -142,6 +130,22 @@ const Dashboard = () => {
     if (hour < 18) return 'Good Afternoon';
     return 'Good Night';
   };
+
+  const updateCharts = useCallback((data) => {
+    setBullish(data.bullish_percentage);
+    setBearish(data.bearish_percentage);
+    setAdvice(data.advice);
+    setAdviceData([
+      { name: 'BUY',        value: data.bullish_percentage,       color: '#5DA5DA' },
+      { name: 'STRONG BUY', value: data.bullish_percentage * 0.7, color: '#0F4C81' },
+      { name: 'STRONG SELL',value: data.bearish_percentage * 0.7, color: '#8B0000' },
+      { name: 'SELL',       value: data.bearish_percentage,       color: '#DC143C' }
+    ]);
+    setConfidenceData([
+      { name: 'STRONG BUY',  value: data.bullish_percentage, color: '#1E5BA8' },
+      { name: 'STRONG SELL', value: data.bearish_percentage, color: '#C41E3A' }
+    ]);
+  }, []);
 
   // Auth check
   useEffect(() => {
@@ -167,88 +171,102 @@ const Dashboard = () => {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
-  // Trigger prediction from ML model via Node backend
-  const triggerPrediction = async (company) => {
-    const mappedCompany = COMPANY_NAME_MAP[company] || company;
-    setPredicting(true);
-    try {
-      const response = await fetch(`${BACKEND_URL}/api/predictions/trigger`, {
+  // Keep backend alive — ping every 14 min so Render never sleeps
+  useEffect(() => {
+    const ping = () => fetch(`${BACKEND_URL}/health`).catch(() => {});
+    ping();
+    const interval = setInterval(ping, 14 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // On mount: load all cached predictions from DB, then trigger background refresh
+  useEffect(() => {
+    const initDashboard = async () => {
+      try {
+        // Step 1: Load everything already in Supabase (fast, single query)
+        const res = await fetch(`${BACKEND_URL}/api/predictions/all`);
+        const cached = await res.json();
+
+        if (Array.isArray(cached) && cached.length > 0) {
+          const map = {};
+          cached.forEach(p => { map[p.company] = p; });
+          setAllPredictions(map);
+
+          // Show current company immediately from cache
+          const mapped = COMPANY_NAME_MAP[selectedCompany] || selectedCompany;
+          if (map[mapped]) {
+            updateCharts(map[mapped]);
+            setPredicting(false);
+          }
+        }
+      } catch (err) {
+        console.error('Init load error:', err);
+      } finally {
+        setInitializing(false);
+      }
+
+      // Step 2: Trigger background ML refresh for all companies (fire and forget)
+      const allMapped = nifty50Companies.map(c => COMPANY_NAME_MAP[c] || c);
+      fetch(`${BACKEND_URL}/api/predictions/trigger-all`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ company: mappedCompany })
-      });
-      const data = await response.json();
-      if (data && !data.error) {
-        updateCharts({
-          bullish_percentage: data.bullish_percentage,
-          bearish_percentage: data.bearish_percentage,
-          advice: data.advice,
-        });
-      }
-    } catch (error) {
-      console.error('Prediction error:', error);
-    } finally {
-      setPredicting(false);
-    }
-  };
-
-  // When company changes, trigger prediction
-  useEffect(() => {
-    if (selectedCompany) {
-      triggerPrediction(selectedCompany);
-    }
-  }, [selectedCompany]);
-
-  // Realtime Supabase listener
-  useEffect(() => {
-    const mappedCompany = COMPANY_NAME_MAP[selectedCompany] || selectedCompany;
-
-    // Fetch latest saved prediction first
-    const fetchLatest = async () => {
-      const { data } = await supabase
-        .from('predictions')
-        .select('*')
-        .eq('company', mappedCompany)
-        .order('timestamp', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (data) updateCharts(data);
+        body: JSON.stringify({ companies: allMapped })
+      }).catch(() => {});
     };
-    fetchLatest();
 
-    // Subscribe to realtime inserts
+    initDashboard();
+  }, []); // runs once on mount
+
+  // When company changes — read from memory (instant), fallback to API if missing
+  useEffect(() => {
+    if (!selectedCompany) return;
+    const mapped = COMPANY_NAME_MAP[selectedCompany] || selectedCompany;
+
+    if (allPredictions[mapped]) {
+      // Instant — already loaded
+      updateCharts(allPredictions[mapped]);
+      setPredicting(false);
+    } else if (!initializing) {
+      // Not in cache yet — fetch individually
+      setPredicting(true);
+      fetch(`${BACKEND_URL}/api/predictions/trigger`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company: mapped })
+      })
+        .then(r => r.json())
+        .then(data => {
+          if (data && !data.error) {
+            updateCharts(data);
+            setAllPredictions(prev => ({ ...prev, [mapped]: data }));
+          }
+        })
+        .catch(console.error)
+        .finally(() => setPredicting(false));
+    }
+  }, [selectedCompany, allPredictions, initializing, updateCharts]);
+
+  // Realtime: update in-memory cache when new predictions arrive
+  useEffect(() => {
     const channel = supabase
-      .channel('predictions-channel')
+      .channel('predictions-realtime')
       .on('postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'predictions' },
         (payload) => {
-          if (payload.new.company === mappedCompany) {
-            updateCharts(payload.new);
+          const incoming = payload.new;
+          // Update memory cache
+          setAllPredictions(prev => ({ ...prev, [incoming.company]: incoming }));
+          // Update charts if it's the currently viewed company
+          const mapped = COMPANY_NAME_MAP[selectedCompany] || selectedCompany;
+          if (incoming.company === mapped) {
+            updateCharts(incoming);
           }
         }
       )
       .subscribe();
 
     return () => supabase.removeChannel(channel);
-  }, [selectedCompany]);
-
-  const updateCharts = (data) => {
-    setBullish(data.bullish_percentage);
-    setBearish(data.bearish_percentage);
-    setAdvice(data.advice);
-
-    setAdviceData([
-      { name: 'BUY', value: data.bullish_percentage, color: '#5DA5DA' },
-      { name: 'STRONG BUY', value: data.bullish_percentage * 0.7, color: '#0F4C81' },
-      { name: 'STRONG SELL', value: data.bearish_percentage * 0.7, color: '#8B0000' },
-      { name: 'SELL', value: data.bearish_percentage, color: '#DC143C' }
-    ]);
-
-    setConfidenceData([
-      { name: 'STRONG BUY', value: data.bullish_percentage, color: '#1E5BA8' },
-      { name: 'STRONG SELL', value: data.bearish_percentage, color: '#C41E3A' }
-    ]);
-  };
+  }, [selectedCompany, updateCharts]);
 
   // Beforeunload review modal
   useEffect(() => {
@@ -356,9 +374,7 @@ const Dashboard = () => {
                     <p className="text-sm font-semibold text-gray-900">
                       {userData?.full_name || 'User'}
                     </p>
-                    <p className="text-sm text-gray-500 truncate">
-                      {user?.email}
-                    </p>
+                    <p className="text-sm text-gray-500 truncate">{user?.email}</p>
                   </div>
                   <button
                     onClick={handleLogout}
@@ -391,8 +407,13 @@ const Dashboard = () => {
             </select>
           </div>
 
-          {/* Prediction status */}
-          {predicting && (
+          {/* Status indicators */}
+          {initializing && (
+            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-3 border border-white/20 text-center">
+              <p className="text-sm text-white animate-pulse">⏳ Loading all predictions...</p>
+            </div>
+          )}
+          {!initializing && predicting && (
             <div className="bg-white/10 backdrop-blur-sm rounded-lg p-3 border border-white/20 text-center">
               <p className="text-sm text-white animate-pulse">⏳ Fetching prediction...</p>
             </div>
