@@ -1,6 +1,7 @@
 import { insertPrediction, getLatestPrediction } from '../models/predictionModel.js';
 
-// Smart TTL — respects market hours (IST)
+const inProgress = new Set();
+
 const isFreshEnough = (timestamp) => {
   const IST_OFFSET = 5.5 * 60 * 60 * 1000;
   const now = new Date();
@@ -13,29 +14,29 @@ const isFreshEnough = (timestamp) => {
   const isMarketOpen = nowIST >= marketOpen && nowIST <= marketClose;
 
   if (!isMarketOpen) {
-    // Outside market hours — any prediction from today is valid
     return predIST.toDateString() === nowIST.toDateString();
   }
 
-  // During market hours — 15-min TTL
   return (now - new Date(timestamp)) < 15 * 60 * 1000;
 };
 
 export const fetchAndStorePrediction = async (company) => {
-  if (!process.env.ML_MODEL_URL) {
-    throw new Error('ML_MODEL_URL environment variable is not set');
-  }
+  if (!process.env.ML_MODEL_URL) throw new Error('ML_MODEL_URL environment variable is not set');
 
-  // Return cached prediction if still fresh — skip ML call entirely
   const existing = await getLatestPrediction(company);
   if (existing?.timestamp && isFreshEnough(existing.timestamp)) {
     console.log(`Cache hit for ${company}`);
     return existing;
   }
 
+  if (inProgress.has(company)) {
+    console.log(`Already in progress: ${company}`);
+    return existing ?? null;
+  }
+
+  inProgress.add(company);
   console.log(`Calling ML model for: ${company}`);
 
-  // 15s timeout
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);
 
@@ -57,6 +58,7 @@ export const fetchAndStorePrediction = async (company) => {
     }
   } finally {
     clearTimeout(timeout);
+    inProgress.delete(company);
   }
 
   if (!response.ok) {
@@ -78,19 +80,17 @@ export const fetchAndStorePrediction = async (company) => {
   return data;
 };
 
-// Bulk predict all companies — skips fresh ones automatically
 export const predictAllCompanies = async (companies) => {
   const results = [];
   for (const company of companies) {
     try {
-      const data = await fetchAndStorePrediction(company); // cache check is inside
+      const data = await fetchAndStorePrediction(company);
       results.push({ company, data });
       console.log(`Done: ${company}`);
     } catch (err) {
       console.error(`Failed for ${company}:`, err.message);
       results.push({ company, error: err.message });
     }
-    // Small gap between ML calls to avoid rate limiting
     await new Promise(r => setTimeout(r, 300));
   }
   return results;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion } from 'motion/react';
 import { supabase, API_URL } from '../supabase/config';
 import { useNavigate } from 'react-router-dom';
@@ -71,7 +71,6 @@ const nifty50Companies = [
   'Tech Mahindra', 'Titan', 'UltraTech Cement', 'Wipro'
 ];
 
-// Map checkbox keys to actual advice strings from ML model
 const ADVICE_KEY_MAP = {
   buy: 'BUY',
   sell: 'SELL',
@@ -79,21 +78,12 @@ const ADVICE_KEY_MAP = {
   strongSell: 'STRONG SELL'
 };
 
-// Custom XAxis tick to wrap long labels like "STRONG BUY"
 const CustomXAxisTick = ({ x, y, payload }) => {
   const words = payload.value.split(' ');
   return (
     <g transform={`translate(${x},${y})`}>
       {words.map((word, i) => (
-        <text
-          key={i}
-          x={0}
-          y={0}
-          dy={16 + i * 14}
-          textAnchor="middle"
-          fill="#6B7280"
-          fontSize={12}
-        >
+        <text key={i} x={0} y={0} dy={16 + i * 14} textAnchor="middle" fill="#6B7280" fontSize={12}>
           {word}
         </text>
       ))}
@@ -109,10 +99,8 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [predicting, setPredicting] = useState(false);
   const [initializing, setInitializing] = useState(true);
-
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [logoutPending, setLogoutPending] = useState(false);
-
   const [selectedCompany, setSelectedCompany] = useState('Infosys');
   const [selectedAdvice, setSelectedAdvice] = useState({
     buy: false, sell: false, strongBuy: false, strongSell: false
@@ -121,9 +109,7 @@ const Dashboard = () => {
     axisBank: false, drReddy: false, iciciBank: false,
     tataConsumer: false, ultraTech: false
   });
-
   const [allPredictions, setAllPredictions] = useState({});
-
   const [adviceData, setAdviceData] = useState([
     { name: 'BUY', value: 0, color: '#5DA5DA' },
     { name: 'STRONG BUY', value: 0, color: '#0F4C81' },
@@ -137,6 +123,8 @@ const Dashboard = () => {
   const [bullish, setBullish] = useState(null);
   const [bearish, setBearish] = useState(null);
   const [advice, setAdvice] = useState(null);
+
+  const triggeredRef = useRef(false);
 
   const getCurrentDate = () => {
     const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -174,10 +162,9 @@ const Dashboard = () => {
     ]);
   }, []);
 
-  // ✅ Filtered company list based on checked advice boxes
   const filteredCompanies = useMemo(() => {
     const anyChecked = Object.values(selectedAdvice).some(Boolean);
-    if (!anyChecked) return nifty50Companies; // no filter — show all
+    if (!anyChecked) return nifty50Companies;
 
     const activeAdviceTypes = Object.entries(selectedAdvice)
       .filter(([, checked]) => checked)
@@ -216,17 +203,19 @@ const Dashboard = () => {
 
   // Keep backend alive
   useEffect(() => {
-    const ping = () => fetch(`${API_URL}/health`).catch(() => { });
+    const ping = () => fetch(`${API_URL}/health`).catch(() => {});
     ping();
     const interval = setInterval(ping, 14 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
 
-  // On mount: load all cached predictions, trigger background refresh
+  // On mount: load cached predictions + trigger background refresh (once only)
   useEffect(() => {
+    if (triggeredRef.current) return;
+    triggeredRef.current = true;
+
     const initDashboard = async () => {
       try {
-        // ✅ Fixed: correct endpoint /all
         const res = await fetch(`${API_URL}/api/predictions/all`);
         const cached = await res.json();
 
@@ -247,19 +236,18 @@ const Dashboard = () => {
         setInitializing(false);
       }
 
-      // ✅ Fixed: correct endpoint /trigger-all with companies array
       const allMapped = nifty50Companies.map(c => COMPANY_NAME_MAP[c] || c);
       fetch(`${API_URL}/api/predictions/trigger-all`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ companies: allMapped })
-      }).catch(() => { });
+      }).catch(() => {});
     };
 
     initDashboard();
   }, []);
 
-  // Company switch — instant from memory, fallback if missing
+  // Company switch
   useEffect(() => {
     if (!selectedCompany) return;
     const mapped = COMPANY_NAME_MAP[selectedCompany] || selectedCompany;
@@ -269,7 +257,6 @@ const Dashboard = () => {
       setPredicting(false);
     } else if (!initializing) {
       setPredicting(true);
-      // ✅ Fixed: correct endpoint /trigger with single company
       fetch(`${API_URL}/api/predictions/trigger`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -342,7 +329,6 @@ const Dashboard = () => {
     if (logoutPending) completeLogout();
   };
 
-  // ✅ When advice filter changes, if selected company is no longer in filtered list, reset to first match
   const handleAdviceChange = (key) => {
     setSelectedAdvice(prev => {
       const updated = { ...prev, [key]: !prev[key] };
@@ -358,7 +344,6 @@ const Dashboard = () => {
         const currentStillValid = currentPrediction && activeAdviceTypes.includes(currentPrediction.advice);
 
         if (!currentStillValid) {
-          // Auto-select first company that matches new filter
           const firstMatch = nifty50Companies.find(company => {
             const m = COMPANY_NAME_MAP[company] || company;
             const p = allPredictions[m];
@@ -383,7 +368,6 @@ const Dashboard = () => {
 
     setSelectedTopCompanies(prev => {
       const isCurrentlyChecked = prev[key];
-      // ✅ Uncheck all, then check only the clicked one (radio-like behavior)
       const reset = Object.fromEntries(Object.keys(prev).map(k => [k, false]));
       return isCurrentlyChecked ? reset : { ...reset, [key]: true };
     });
@@ -464,7 +448,6 @@ const Dashboard = () => {
           <div>
             <label className="block text-sm font-medium text-white mb-2">
               Company
-              {/* ✅ Show count when filtered */}
               {anyAdviceChecked && (
                 <span className="ml-2 text-xs bg-white/20 px-2 py-0.5 rounded-full">
                   {filteredCompanies.length} match
@@ -476,7 +459,6 @@ const Dashboard = () => {
               onChange={(e) => setSelectedCompany(e.target.value)}
               className="w-full px-4 py-2.5 border border-white/30 rounded-lg bg-white/10 backdrop-blur-sm text-white focus:ring-2 focus:ring-white/50 outline-none"
             >
-              {/* ✅ Show filtered companies when advice checkbox is active */}
               {filteredCompanies.length > 0 ? (
                 filteredCompanies.map((company) => (
                   <option key={company} value={company} className="text-gray-900 bg-white">
@@ -520,7 +502,6 @@ const Dashboard = () => {
             </button>
             <div className="mt-3 space-y-2.5 pl-2">
               {['buy', 'sell', 'strongBuy', 'strongSell'].map((key) => {
-                // Count how many companies have this advice
                 const adviceValue = ADVICE_KEY_MAP[key];
                 const count = Object.values(allPredictions).filter(p => p.advice === adviceValue).length;
                 return (
@@ -536,7 +517,6 @@ const Dashboard = () => {
                         {key === 'strongBuy' ? 'STRONG BUY' : key === 'strongSell' ? 'STRONG SELL' : key.toUpperCase()}
                       </span>
                     </div>
-                    {/* ✅ Show company count per advice type */}
                     {count > 0 && (
                       <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full text-white/90">
                         {count}
@@ -627,18 +607,10 @@ const Dashboard = () => {
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}
               className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
               <h3 className="text-lg font-semibold text-gray-700 mb-4">Advice Breakdown</h3>
-              {/* ✅ Added bottom margin to give wrapped labels room */}
               <ResponsiveContainer width="100%" height={320}>
                 <BarChart data={adviceData} margin={{ bottom: 20 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                  {/* ✅ Custom tick renders multi-word labels on two lines */}
-                  <XAxis
-                    dataKey="name"
-                    stroke="#9CA3AF"
-                    tick={<CustomXAxisTick />}
-                    interval={0}
-                    height={50}
-                  />
+                  <XAxis dataKey="name" stroke="#9CA3AF" tick={<CustomXAxisTick />} interval={0} height={50} />
                   <YAxis stroke="#9CA3AF" tick={{ fill: '#6B7280', fontSize: 12 }} />
                   <Tooltip contentStyle={{ backgroundColor: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: '8px' }} />
                   <Bar dataKey="value" radius={[8, 8, 0, 0]}>
