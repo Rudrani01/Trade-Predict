@@ -11,7 +11,7 @@ const Login = () => {
   const [success, setSuccess] = useState('');
 
   const [loginData, setLoginData] = useState({ email: '', password: '', remember: false });
-  const [registerData, setRegisterData] = useState({ username: '', email: '', password: '', terms: false });
+  const [registerData, setRegisterData] = useState({ username: '', email: '', password: '' });
 
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
@@ -28,7 +28,6 @@ const Login = () => {
   const handleRegisterSubmit = async (e) => {
     e.preventDefault();
     setError(''); setSuccess('');
-    if (!registerData.terms) { setError('Please accept the terms and conditions'); return; }
     setLoading(true);
     try {
       const response = await fetch(`${API_URL}/api/auth/signup`, {
@@ -71,8 +70,8 @@ const Login = () => {
   };
 
   const handleRegisterChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    setRegisterData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
+    const { name, value } = e.target;
+    setRegisterData(prev => ({ ...prev, [name]: value }));
   };
 
   const inputClass = "w-full px-4 py-3 border-b-2 border-gray-300 dark:border-gray-700 focus:border-[#5044E5] outline-none transition-colors bg-transparent text-gray-700 dark:text-white placeholder-gray-500 dark:placeholder-white/75 disabled:opacity-50";
@@ -154,7 +153,6 @@ const Login = () => {
           </form>
         )}
 
-        {/* Register Form */}
         {/* Register Form */}
         {!isLogin && (
           <form onSubmit={handleRegisterSubmit} className="space-y-5">
