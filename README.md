@@ -2,7 +2,7 @@
 
 > ML-powered stock prediction platform with real-time dashboard and automated email alerts.
 
-🔗 **Live Demo:** [your-live-link-here]
+🔗 **Live Demo:** [https://tradepredict-five.vercel.app/]
 
 ---
 
