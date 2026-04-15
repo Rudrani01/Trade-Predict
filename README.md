@@ -14,12 +14,12 @@
 
 ##  Features
 
-- 🔐 Secure user registration & login via **Supabase Auth**
-- 📊 Clean **React dashboard** displaying real-time ML predictions for NIFTY 50 stocks
-- 📧 **Hourly automated email alerts** sent to users with updated predictions
-- 🕐 **Daily cron job scheduler** keeping predictions and alerts in sync
-- 🌐 **REST APIs** connecting the frontend, backend, and ML prediction service
-- 🟢 **UptimeRobot** pinging the backend every 5 minutes to prevent Render cold starts
+-  Secure user registration & login via **Supabase Auth**
+-  Clean **React dashboard** displaying real-time ML predictions for NIFTY 50 stocks
+-  **Hourly automated email alerts** sent to users with updated predictions
+-  **Daily cron job scheduler** keeping predictions and alerts in sync
+-  **REST APIs** connecting the frontend, backend, and ML prediction service
+-  **UptimeRobot** pinging the backend every 5 minutes to prevent Render cold starts
 
 ---
 
