@@ -38,19 +38,18 @@ cron.schedule('0 0 */4 * *', async () => {
 // ✅ Hourly prediction + email during market hours (9am–4pm IST, Mon–Fri)
 cron.schedule('0 9-16 * * 1-5', async () => {
   console.log('⏰ Hourly prediction + email job started...');
-  const predictions = [];
 
   for (const company of companies) {
     try {
-      const result = await fetchAndStorePrediction(company);
-      if (result) predictions.push({ company, ...result });
-      console.log(`✅ Prediction done: ${company}`);
+      await fetchAndStorePrediction(company);
+      console.log(`✅ Prediction stored: ${company}`);
     } catch (err) {
       console.error(`❌ ${company}:`, err.message);
     }
   }
 
-  await sendHourlyPredictionEmails(predictions);
+  // ✅ Pulls directly from DB — no array passed
+  await sendHourlyPredictionEmails();
   console.log('🎉 Job complete.');
 
 }, { timezone: 'Asia/Kolkata' });

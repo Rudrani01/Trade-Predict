@@ -57,6 +57,11 @@ const COMPANY_NAME_MAP = {
   'Wipro': 'Wipro',
 };
 
+// Reverse map: full backend name → short display name
+const REVERSE_COMPANY_MAP = Object.fromEntries(
+  Object.entries(COMPANY_NAME_MAP).map(([short, full]) => [full, short])
+);
+
 const nifty50Companies = [
   'Adani Enterprises', 'Adani Ports', 'Apollo Hospitals',
   'Asian Paints', 'Axis Bank', 'Bajaj Auto', 'Bajaj Finance',
@@ -105,10 +110,8 @@ const Dashboard = () => {
   const [selectedAdvice, setSelectedAdvice] = useState({
     buy: false, sell: false, strongBuy: false, strongSell: false
   });
-  const [selectedTopCompanies, setSelectedTopCompanies] = useState({
-    axisBank: false, drReddy: false, iciciBank: false,
-    tataConsumer: false, ultraTech: false
-  });
+  // Dynamic keys — full backend company name as key
+  const [selectedTopCompanies, setSelectedTopCompanies] = useState({});
   const [allPredictions, setAllPredictions] = useState({});
   const [adviceData, setAdviceData] = useState([
     { name: 'BUY', value: 0, color: '#5DA5DA' },
@@ -177,6 +180,36 @@ const Dashboard = () => {
     });
   }, [selectedAdvice, allPredictions]);
 
+  // ── Dynamic Top 5 from backend, sorted ascending by bullish % ───────────────
+  const sortedTopCompanies = useMemo(() => {
+    const entries = Object.entries(allPredictions);
+    if (entries.length === 0) return [];
+
+    return [...entries]
+      .sort((a, b) => a[1].bullish_percentage - b[1].bullish_percentage)
+      .slice(0, 5)
+      .map(([name, prediction]) => ({
+        name,                                          // full backend name
+        label: REVERSE_COMPANY_MAP[name] || name,     // short display name
+        bullish_percentage: prediction.bullish_percentage,
+        advice: prediction.advice
+      }));
+  }, [allPredictions]);
+
+  // ── Company rank by bullish % (ascending — rank 1 = lowest bullish) ─────────
+  const companyRank = useMemo(() => {
+    const entries = Object.entries(allPredictions);
+    if (entries.length === 0) return null;
+
+    const mapped = COMPANY_NAME_MAP[selectedCompany] || selectedCompany;
+    if (!allPredictions[mapped]) return null;
+
+    const sorted = [...entries].sort((a, b) => a[1].bullish_percentage - b[1].bullish_percentage);
+    const rank = sorted.findIndex(([name]) => name === mapped) + 1;
+    return { rank, total: sorted.length };
+  }, [selectedCompany, allPredictions]);
+  // ────────────────────────────────────────────────────────────────────────────
+
   // Auth check
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
@@ -203,7 +236,7 @@ const Dashboard = () => {
 
   // Keep backend alive
   useEffect(() => {
-    const ping = () => fetch(`${API_URL}/health`).catch(() => {});
+    const ping = () => fetch(`${API_URL}/health`).catch(() => { });
     ping();
     const interval = setInterval(ping, 14 * 60 * 1000);
     return () => clearInterval(interval);
@@ -241,7 +274,7 @@ const Dashboard = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ companies: allMapped })
-      }).catch(() => {});
+      }).catch(() => { });
     };
 
     initDashboard();
@@ -357,23 +390,19 @@ const Dashboard = () => {
     });
   };
 
-  const handleTopCompanyChange = (key) => {
-    const keyToCompany = {
-      axisBank: 'Axis Bank',
-      drReddy: "Dr. Reddy's Laboratories",
-      iciciBank: 'ICICI Bank',
-      tataConsumer: 'Tata Consumer',
-      ultraTech: 'UltraTech Cement'
-    };
-
+  // ── Top 5 checkbox handler — uses full backend name as key ──────────────────
+  const handleTopCompanyChange = (fullName) => {
     setSelectedTopCompanies(prev => {
-      const isCurrentlyChecked = prev[key];
+      const isCurrentlyChecked = !!prev[fullName];
       const reset = Object.fromEntries(Object.keys(prev).map(k => [k, false]));
-      return isCurrentlyChecked ? reset : { ...reset, [key]: true };
+      return isCurrentlyChecked ? reset : { ...reset, [fullName]: true };
     });
 
-    setSelectedCompany(keyToCompany[key]);
+    // Convert full backend name → short dropdown name and update selected company
+    const shortName = REVERSE_COMPANY_MAP[fullName] || fullName;
+    setSelectedCompany(shortName);
   };
+  // ────────────────────────────────────────────────────────────────────────────
 
   const getAdviceColor = (adv) => {
     if (!adv) return 'text-gray-800';
@@ -528,6 +557,7 @@ const Dashboard = () => {
             </div>
           </div>
 
+          {/* ── Top 5 Company — fully dynamic from backend ────────────────────── */}
           <div>
             <button className="w-full flex items-center justify-between px-4 py-2.5 bg-white/10 backdrop-blur-sm rounded-lg border border-white/20 text-sm font-medium text-white">
               <span>Top 5 Company</span>
@@ -535,28 +565,35 @@ const Dashboard = () => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
             </button>
+            <p className="mt-2 text-xs text-white/60 pl-1 italic">
+              Sorted by bullish % (lowest first)
+            </p>
             <div className="mt-3 space-y-2.5 pl-2">
-              {[
-                { key: 'axisBank', label: 'Axis Bank' },
-                { key: 'drReddy', label: "Dr. Reddy's Laboratory" },
-                { key: 'iciciBank', label: 'ICICI Bank' },
-                { key: 'tataConsumer', label: 'Tata Consumer' },
-                { key: 'ultraTech', label: 'UltraTech Cement' }
-              ].map(({ key, label }) => (
-                <label key={key} className="flex items-center space-x-2 cursor-pointer group">
-                  <input
-                    type="checkbox"
-                    checked={selectedTopCompanies[key]}
-                    onChange={() => handleTopCompanyChange(key)}
-                    className="w-4 h-4 accent-white cursor-pointer"
-                  />
-                  <span className="text-sm text-white group-hover:text-white/80 transition-colors">
-                    {label}
-                  </span>
-                </label>
-              ))}
+              {sortedTopCompanies.length === 0 ? (
+                <p className="text-xs text-white/50 italic">Loading...</p>
+              ) : (
+                sortedTopCompanies.map(({ name, label, bullish_percentage }) => (
+                  <label key={name} className="flex items-center justify-between cursor-pointer group">
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        checked={!!selectedTopCompanies[name]}
+                        onChange={() => handleTopCompanyChange(name)}
+                        className="w-4 h-4 accent-white cursor-pointer"
+                      />
+                      <span className="text-sm text-white group-hover:text-white/80 transition-colors">
+                        {label}
+                      </span>
+                    </div>
+                    <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full text-white/90">
+                      {bullish_percentage.toFixed(1)}%
+                    </span>
+                  </label>
+                ))
+              )}
             </div>
           </div>
+          {/* ─────────────────────────────────────────────────────────────────── */}
         </aside>
 
         {/* Main Content */}
@@ -573,8 +610,16 @@ const Dashboard = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
               className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
-              <p className="text-sm text-gray-500 mb-2">Selected Company</p>
-              <p className="text-xl font-bold text-gray-800">{selectedCompany}</p>
+              <p className="text-sm text-gray-500 mb-2">Company Rank</p>
+              {predicting || !companyRank ? (
+                <p className="text-3xl font-bold text-gray-400">—</p>
+              ) : (
+                <div className="flex items-baseline gap-1">
+                  <p className="text-3xl font-bold text-[#5B5FED]">#{companyRank.rank}</p>
+                  <p className="text-sm text-gray-400">/ {companyRank.total}</p>
+                </div>
+              )}
+              <p className="text-xs text-gray-400 mt-1">by bullish %</p>
             </motion.div>
 
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
@@ -601,6 +646,7 @@ const Dashboard = () => {
               </p>
             </motion.div>
           </div>
+          {/* ✅ closes KPI grid */}
 
           {/* Charts */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -610,7 +656,7 @@ const Dashboard = () => {
               <ResponsiveContainer width="100%" height={320}>
                 <BarChart data={adviceData} margin={{ bottom: 20 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                  <XAxis dataKey="name" stroke="#9CA3AF" tick={<CustomXAxisTick />} interval={0} height={50} />
+                  <XAxis dataKey="name" stroke="#9CA3AF" tick={(props) => <CustomXAxisTick {...props} />} interval={0} height={50} />
                   <YAxis stroke="#9CA3AF" tick={{ fill: '#6B7280', fontSize: 12 }} />
                   <Tooltip contentStyle={{ backgroundColor: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: '8px' }} />
                   <Bar dataKey="value" radius={[8, 8, 0, 0]}>
@@ -638,9 +684,14 @@ const Dashboard = () => {
               </ResponsiveContainer>
             </motion.div>
           </div>
+          {/* ✅ closes Charts grid */}
+
         </main>
+      
       </div>
+   
     </div>
+    
   );
 };
 
