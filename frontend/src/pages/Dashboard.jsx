@@ -710,11 +710,13 @@ const Dashboard = () => {
               </ResponsiveContainer>
             </motion.div>
           </div>
-          
 
         </main>
+      
       </div>
+    
     </div>
+    
   );
 };
 
