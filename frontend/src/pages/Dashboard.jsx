@@ -180,12 +180,24 @@ const Dashboard = () => {
     });
   }, [selectedAdvice, allPredictions]);
 
-  // ── Dynamic Top 5 from backend, sorted ascending by bullish % ───────────────
+  // ── Dynamic Top 5 from backend, filtered by active advice, sorted ascending by bullish % ──
   const sortedTopCompanies = useMemo(() => {
     const entries = Object.entries(allPredictions);
     if (entries.length === 0) return [];
 
-    return [...entries]
+    const anyChecked = Object.values(selectedAdvice).some(Boolean);
+
+    // Get active advice types from checked checkboxes
+    const activeAdviceTypes = Object.entries(selectedAdvice)
+      .filter(([, checked]) => checked)
+      .map(([key]) => ADVICE_KEY_MAP[key]);
+
+    // Filter by active advice if any checked, else show all
+    const filtered = anyChecked
+      ? entries.filter(([, prediction]) => activeAdviceTypes.includes(prediction.advice))
+      : entries;
+
+    return [...filtered]
       .sort((a, b) => a[1].bullish_percentage - b[1].bullish_percentage)
       .slice(0, 5)
       .map(([name, prediction]) => ({
@@ -194,7 +206,7 @@ const Dashboard = () => {
         bullish_percentage: prediction.bullish_percentage,
         advice: prediction.advice
       }));
-  }, [allPredictions]);
+  }, [allPredictions, selectedAdvice]);
 
   // ── Company rank by bullish % (ascending — rank 1 = lowest bullish) ─────────
   const companyRank = useMemo(() => {
@@ -386,6 +398,9 @@ const Dashboard = () => {
         }
       }
 
+      // Reset top company selection when advice filter changes
+      setSelectedTopCompanies({});
+
       return updated;
     });
   };
@@ -414,6 +429,15 @@ const Dashboard = () => {
   };
 
   const anyAdviceChecked = Object.values(selectedAdvice).some(Boolean);
+
+  // Label for Top 5 section header based on active filter
+  const top5Label = useMemo(() => {
+    const activeKeys = Object.entries(selectedAdvice)
+      .filter(([, checked]) => checked)
+      .map(([key]) => key === 'strongBuy' ? 'STRONG BUY' : key === 'strongSell' ? 'STRONG SELL' : key.toUpperCase());
+    if (activeKeys.length === 0) return 'Top 5 Company';
+    return `Top 5 — ${activeKeys.join(', ')}`;
+  }, [selectedAdvice]);
 
   if (loading) {
     return (
@@ -557,10 +581,10 @@ const Dashboard = () => {
             </div>
           </div>
 
-          {/* ── Top 5 Company — fully dynamic from backend ────────────────────── */}
+          {/* ── Top 5 Company — fully dynamic, filtered by active advice ─────── */}
           <div>
             <button className="w-full flex items-center justify-between px-4 py-2.5 bg-white/10 backdrop-blur-sm rounded-lg border border-white/20 text-sm font-medium text-white">
-              <span>Top 5 Company</span>
+              <span>{top5Label}</span>
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
@@ -570,7 +594,9 @@ const Dashboard = () => {
             </p>
             <div className="mt-3 space-y-2.5 pl-2">
               {sortedTopCompanies.length === 0 ? (
-                <p className="text-xs text-white/50 italic">Loading...</p>
+                <p className="text-xs text-white/50 italic">
+                  {initializing ? 'Loading...' : 'No companies found'}
+                </p>
               ) : (
                 sortedTopCompanies.map(({ name, label, bullish_percentage }) => (
                   <label key={name} className="flex items-center justify-between cursor-pointer group">
@@ -684,14 +710,11 @@ const Dashboard = () => {
               </ResponsiveContainer>
             </motion.div>
           </div>
-          {/* ✅ closes Charts grid */}
+          
 
         </main>
-      
       </div>
-   
     </div>
-    
   );
 };
 
