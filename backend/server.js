@@ -11,7 +11,7 @@ dotenv.config();
 const app = express();
 
 const corsOptions = {
-  origin: ['https://trade-predict.vercel.app', 'http://localhost:5173'],
+  origin: ['https://tradepredict-five.vercel.app', 'http://localhost:5173'],
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
@@ -26,7 +26,7 @@ app.use('/api/auth', authRoutes);
 
 app.get('/', (req, res) => res.send('Backend running'));
 
-// ✅ Health endpoint — required for keep-alive ping from frontend
+// Health endpoint — required for keep-alive ping from frontend
 app.get('/health', (req, res) => res.json({ status: 'ok', ts: Date.now() }));
 
 // Test email route
